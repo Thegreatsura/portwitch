@@ -4,10 +4,10 @@ use crate::lsof::Process;
 use itertools::Itertools;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::symbols::border;
-use ratatui::{DefaultTerminal, prelude::*};
 use ratatui::widgets::{Block, HighlightSpacing, List, Row, Table, TableState};
-use std::{env, io};
+use ratatui::{prelude::*, DefaultTerminal};
 use std::process::Command;
+use std::{env, io};
 
 fn main() -> io::Result<()> {
     let args = env::args().skip(1).join(" ");
@@ -152,7 +152,6 @@ impl App {
         let title = Line::from(" Help ".bold());
         let block = Block::bordered()
             .title(title.centered())
-            .style(Style::new().white())
             .border_set(border::ROUNDED);
 
         let items = [
@@ -196,9 +195,7 @@ impl App {
             State::EditFilter(f) => f,
         };
 
-        self.processes
-            .iter()
-            .filter(|p| show_in_filter(p, filter))
+        self.processes.iter().filter(|p| show_in_filter(p, filter))
     }
 }
 
