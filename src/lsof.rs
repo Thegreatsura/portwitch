@@ -1,7 +1,7 @@
+use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::process::Command;
 use strum::{EnumIter, IntoEnumIterator};
-use itertools::Itertools;
 
 pub fn lsof() -> Vec<Process> {
     let stdout = Command::new("lsof")

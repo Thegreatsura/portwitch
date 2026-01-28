@@ -5,47 +5,73 @@ use itertools::Itertools;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::symbols::border;
 use ratatui::widgets::{Block, HighlightSpacing, List, Row, Table, TableState};
-use ratatui::{prelude::*, DefaultTerminal};
+use ratatui::{DefaultTerminal, prelude::*};
 use std::process::Command;
-use std::{env, io};
+use std::sync::mpsc::{Receiver, sync_channel};
+use std::time::Duration;
+use std::{env, io, thread};
+
+const UPDATE_INTERVAL: Duration = Duration::from_millis(200);
 
 fn main() -> io::Result<()> {
     let args = env::args().skip(1).join(" ");
 
-    let mut app = App {
-        processes: processes(),
-        filter: args,
-        ..App::default()
-    };
+    let receiver = spawn_process_updater();
 
-    if app.filtered_list().count() == 1 {
-        app.table.select(Some(0));
-    }
+    let mut app = App {
+        filter: args,
+        receiver,
+        processes: Vec::new(),
+        exit: false,
+        table: TableState::default(),
+        state: AppState::default(),
+    };
 
     ratatui::run(|terminal| app.run(terminal))
 }
 
+/// Spawn a thread for updating the list of processes.
+/// Returns a receiver for receiving the updates.
+fn spawn_process_updater() -> Receiver<Vec<Process>> {
+    let (sender, receiver) = sync_channel(0);
+
+    thread::spawn(move || {
+        loop {
+            let procs = processes();
+            if sender.send(procs).is_err() {
+                break;
+            }
+        }
+    });
+
+    receiver
+}
+
 #[derive(Debug, Default)]
-enum State {
+enum AppState {
     #[default]
     ShowList,
     ShowHelp,
     EditFilter(String),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct App {
+    /// The complete list of processes.
+    /// Prefer to use filtered_list for UI purposes.
     processes: Vec<Process>,
     exit: bool,
     table: TableState,
     filter: String,
-    state: State,
+    state: AppState,
+    receiver: Receiver<Vec<Process>>,
 }
 
 impl App {
     /// runs the application's main loop until the user quits
     fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         while !self.exit {
+            self.refresh_processes();
             terminal.draw(|frame| self.draw(frame))?;
             self.handle_events()?;
         }
@@ -53,7 +79,23 @@ impl App {
     }
 
     fn refresh_processes(&mut self) {
-        self.processes = processes();
+        // To keep a stable selection, we will remember the PID of the selected process
+        // before updating and restore it after.
+        let selected_pid = self
+            .table
+            .selected()
+            .and_then(|i| self.filtered_list().nth(i))
+            .map(|p| p.pid);
+
+        // We expect a value to be in the channel, no waiting.
+        if let Ok(procs) = self.receiver.recv_timeout(Duration::ZERO) {
+            self.processes = procs;
+        }
+
+        if let Some(selected_pid) = selected_pid {
+            let i = self.filtered_list().position(|p| p.pid == selected_pid);
+            self.table.select(i);
+        }
     }
 
     fn draw(&mut self, frame: &mut Frame) {
@@ -61,6 +103,11 @@ impl App {
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
+        let event_available = event::poll(UPDATE_INTERVAL)?;
+        if !event_available {
+            return Ok(());
+        }
+
         match event::read()? {
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                 self.handle_key_event(key_event)
@@ -72,28 +119,27 @@ impl App {
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match &mut self.state {
-            State::ShowList => match key_event.code {
+            AppState::ShowList => match key_event.code {
                 KeyCode::Char('q') => self.exit(),
                 KeyCode::Esc => self.handle_escape(),
                 KeyCode::Up | KeyCode::Char('k') => self.table.select_previous(),
                 KeyCode::Down | KeyCode::Char('j') => self.table.select_next(),
-                KeyCode::Char('?') => self.state = State::ShowHelp,
-                KeyCode::Char('/') => self.state = State::EditFilter(self.filter.clone()),
+                KeyCode::Char('?') => self.state = AppState::ShowHelp,
+                KeyCode::Char('/') => self.state = AppState::EditFilter(self.filter.clone()),
                 KeyCode::Char('x') => self.kill_selected(),
-                KeyCode::Char('r') => self.refresh_processes(),
                 _ => {}
             },
-            State::ShowHelp => match key_event.code {
+            AppState::ShowHelp => match key_event.code {
                 KeyCode::Char('q') => self.exit(),
-                KeyCode::Esc | KeyCode::Char('?') => self.state = State::ShowList,
+                KeyCode::Esc | KeyCode::Char('?') => self.state = AppState::ShowList,
                 _ => {}
             },
-            State::EditFilter(filter) => match key_event.code {
+            AppState::EditFilter(filter) => match key_event.code {
                 KeyCode::Enter => {
                     self.filter = filter.clone();
-                    self.state = State::ShowList;
+                    self.state = AppState::ShowList;
                 }
-                KeyCode::Esc => self.state = State::ShowList,
+                KeyCode::Esc => self.state = AppState::ShowList,
                 KeyCode::Backspace => {
                     filter.pop();
                 }
@@ -110,10 +156,10 @@ impl App {
         let mut title = vec![" Processes ".bold()];
 
         match &self.state {
-            State::ShowList | State::ShowHelp if !self.filter.is_empty() => {
+            AppState::ShowList | AppState::ShowHelp if !self.filter.is_empty() => {
                 title.push(format!("/{}", self.filter).light_blue());
             }
-            State::EditFilter(filter) => {
+            AppState::EditFilter(filter) => {
                 title.push(format!("/{filter}").black().on_light_blue());
             }
             _ => (),
@@ -191,8 +237,8 @@ impl App {
 
     fn filtered_list(&self) -> impl Iterator<Item = &Process> {
         let filter = match &self.state {
-            State::ShowList | State::ShowHelp => &self.filter,
-            State::EditFilter(f) => f,
+            AppState::ShowList | AppState::ShowHelp => &self.filter,
+            AppState::EditFilter(f) => f,
         };
 
         self.processes.iter().filter(|p| show_in_filter(p, filter))
@@ -202,8 +248,8 @@ impl App {
 impl Widget for &mut App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         match self.state {
-            State::ShowList | State::EditFilter(_) => self.render_process_table(area, buf),
-            State::ShowHelp => self.render_help(area, buf),
+            AppState::ShowList | AppState::EditFilter(_) => self.render_process_table(area, buf),
+            AppState::ShowHelp => self.render_help(area, buf),
         }
     }
 }
