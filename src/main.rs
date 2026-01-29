@@ -11,7 +11,7 @@ use std::sync::mpsc::{Receiver, sync_channel};
 use std::time::Duration;
 use std::{env, io, thread};
 
-const UPDATE_INTERVAL: Duration = Duration::from_millis(200);
+const UPDATE_INTERVAL: Duration = Duration::from_millis(500);
 
 fn main() -> io::Result<()> {
     let args = env::args().skip(1).join(" ");
@@ -21,7 +21,7 @@ fn main() -> io::Result<()> {
     let mut app = App {
         filter: args,
         receiver,
-        processes: Vec::new(),
+        processes: processes(),
         exit: false,
         table: TableState::default(),
         state: AppState::default(),
