@@ -172,8 +172,11 @@ impl App {
             .style(Style::new().white());
 
         let rows = self.filtered_list().map(|p| {
-            let items = vec![p.pid.to_string(), p.command.to_string(), p.ports.join(",")];
-            Row::new(items)
+            Row::new(vec![
+                format!("{:>5}", p.pid),
+                p.command.to_string(),
+                p.ports.join(","),
+            ])
         });
 
         let header = Row::new(vec!["PID", "Command", "Ports"]).style(Style::new().bold());
