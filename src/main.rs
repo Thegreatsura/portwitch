@@ -4,7 +4,7 @@ use crate::lsof::Process;
 use itertools::Itertools;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::symbols::border;
-use ratatui::widgets::{Block, HighlightSpacing, List, Row, Table, TableState};
+use ratatui::widgets::{Block, Clear, HighlightSpacing, List, Padding, Row, Table, TableState};
 use ratatui::{DefaultTerminal, prelude::*};
 use std::process::Command;
 use std::sync::mpsc::{Receiver, sync_channel};
@@ -120,7 +120,6 @@ impl App {
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match &mut self.state {
             AppState::ShowList => match key_event.code {
-                KeyCode::Char('q') => self.exit(),
                 KeyCode::Esc => self.handle_escape(),
                 KeyCode::Up | KeyCode::Char('k') => self.table.select_previous(),
                 KeyCode::Down | KeyCode::Char('j') => self.table.select_next(),
@@ -130,7 +129,6 @@ impl App {
                 _ => {}
             },
             AppState::ShowHelp => match key_event.code {
-                KeyCode::Char('q') => self.exit(),
                 KeyCode::Esc | KeyCode::Char('?') => self.state = AppState::ShowList,
                 _ => {}
             },
@@ -168,7 +166,7 @@ impl App {
         let title = Line::from(title);
         let block = Block::new()
             .title(title.centered())
-            .title_bottom(Line::from("<q> or <esc> to quit. <x> to kill. <?> for help.").centered())
+            .title_bottom(self.bottom_title())
             .style(Style::new().white());
 
         let rows = self.filtered_list().map(|p| {
@@ -199,22 +197,73 @@ impl App {
 
     fn render_help(&self, area: Rect, buf: &mut Buffer) {
         let title = Line::from(" Help ".bold());
-        let block = Block::bordered()
-            .title(title.centered())
-            .border_set(border::ROUNDED);
-
         let items = [
-            "<q> Quit",
-            "<esc> Clear filter or quit",
-            "<k> or <↑> Select previous",
-            "<j> or <↓> Select next",
-            "<x> Kill selected",
-            "<r> Refresh list",
-            "</> Filter",
+            Line::from(vec![
+                "<esc>".bold(),
+                " Clear filter / close help / quit".into(),
+            ]),
+            Line::from(vec![
+                "<k>".bold(),
+                " or ".into(),
+                "<↑>".bold(),
+                " Select previous".into(),
+            ]),
+            Line::from(vec![
+                "<j>".bold(),
+                " or ".into(),
+                "<↓>".bold(),
+                " Select next".into(),
+            ]),
+            Line::from(vec!["<x>".bold(), " Kill selected".into()]),
+            Line::from(vec!["</>".bold(), " Filter".into()]),
+            "".into(),
+            Line::from(vec![
+                "Pro-Tip".yellow(),
+                ": portwitch accepts CLI args".into(),
+            ]),
+            "  to set an initial filter".into(),
+            Line::from(vec!["  $ portwitch ".into(), "8080".yellow()]),
         ];
 
+        let block = Block::bordered()
+            .title(title.centered())
+            .padding(Padding::proportional(1))
+            .border_set(border::ROUNDED);
+
+        // Add border and padding to width and height
+        let height = items.len() as u16 + 4;
+        let width = items.iter().map(|line| line.width() as u16).max().unwrap() + 6;
+        let area = area.centered(Constraint::Length(width), Constraint::Length(height));
+
         let list = List::new(items).block(block);
+        Widget::render(Clear, area, buf);
         Widget::render(list, area, buf);
+    }
+
+    /// Text that is rendered at the bottom of the table.
+    fn bottom_title(&self) -> Line<'static> {
+        let items = match self.state {
+            AppState::ShowList => vec![
+                ("<esc>", "to quit"),
+                ("<x>", "to kill"),
+                ("<?>", "for help"),
+            ],
+            AppState::ShowHelp => vec![("<esc>", "close help")],
+            AppState::EditFilter(_) => {
+                vec![("<esc>", "discard filter"), ("<enter>", "confirm filter")]
+            }
+        };
+
+        let mut line = Line::default().centered();
+
+        for (key, text) in items {
+            line.push_span(key.bold());
+            line.push_span(" ");
+            line.push_span(text);
+            line.push_span(". ");
+        }
+
+        line
     }
 
     fn kill_selected(&mut self) {
@@ -250,9 +299,9 @@ impl App {
 
 impl Widget for &mut App {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        match self.state {
-            AppState::ShowList | AppState::EditFilter(_) => self.render_process_table(area, buf),
-            AppState::ShowHelp => self.render_help(area, buf),
+        self.render_process_table(area, buf);
+        if matches!(self.state, AppState::ShowHelp) {
+            self.render_help(area, buf);
         }
     }
 }
