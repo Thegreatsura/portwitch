@@ -2,7 +2,7 @@ mod lsof;
 
 use crate::lsof::Process;
 use itertools::Itertools;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::symbols::border;
 use ratatui::widgets::{Block, Clear, HighlightSpacing, List, Padding, Row, Table, TableState};
 use ratatui::{DefaultTerminal, prelude::*};
@@ -118,6 +118,14 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
+        // ^C should always exit
+        if key_event.code == KeyCode::Char('c')
+            && key_event.modifiers.contains(KeyModifiers::CONTROL)
+        {
+            self.exit();
+            return;
+        }
+
         match &mut self.state {
             AppState::ShowList => match key_event.code {
                 KeyCode::Esc => self.handle_escape(),
@@ -244,7 +252,11 @@ impl App {
     fn bottom_title(&self) -> Line<'static> {
         let items = match self.state {
             AppState::ShowList => vec![
-                ("<esc>", "to quit"),
+                if self.filter.is_empty() {
+                    ("<esc>", "to quit")
+                } else {
+                    ("<esc>", "clear filter")
+                },
                 ("<x>", "to kill"),
                 ("<?>", "for help"),
             ],
