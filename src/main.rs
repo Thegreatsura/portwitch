@@ -12,6 +12,7 @@ use std::time::Duration;
 use std::{env, io, thread};
 
 const UPDATE_INTERVAL: Duration = Duration::from_millis(500);
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() -> io::Result<()> {
     let args = env::args().skip(1).join(" ");
@@ -159,7 +160,7 @@ impl App {
     }
 
     fn render_process_table(&mut self, area: Rect, buf: &mut Buffer) {
-        let mut title = vec![" Processes ".bold()];
+        let mut title = vec![format!(" 🔮 portwitch {VERSION} ").bold()];
 
         match &self.state {
             AppState::ShowList | AppState::ShowHelp if !self.filter.is_empty() => {
