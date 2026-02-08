@@ -1,6 +1,8 @@
 # 🔮 portwitch
 
-Which process is blocking this port? Ask portwitch.
+Which process is blocking this port? Ask `portwitch`.
+
+With `portwitch` you can quickly find the process blocking a specific port and kill it.
 
 [![asciicast](https://asciinema.org/a/782916.svg)](https://asciinema.org/a/782916)
 
