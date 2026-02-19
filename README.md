@@ -1,6 +1,6 @@
 # 🔮 portwitch
 
-Which process is blocking this port? Ask `portwitch`.
+"Which process is blocking this port?!" Ask `portwitch`.
 
 With `portwitch` you can quickly find the process blocking a specific port and kill it.
 
@@ -8,8 +8,11 @@ With `portwitch` you can quickly find the process blocking a specific port and k
 
 ## Installation
 
+> [!NOTE]
+> Portwitch is only supported on Linux and MacOS.
+
 Currently only installation with [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html),
-the Rust package manager, is supported:
+the Rust package manager, is possible:
 
 ```shell
 cargo install --locked --git https://github.com/haselkern/portwitch.git --tag v1.0.0
